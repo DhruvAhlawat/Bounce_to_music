@@ -3,6 +3,7 @@ import sys
 import os
 import numpy as np;
 from pygame.locals import *
+import pickle
 pygame.init() #initializes pygame
 clock = pygame.time.Clock()
 screen_width = 720; 
@@ -10,8 +11,15 @@ screen_height = 720;
 screen = pygame.display.set_mode((screen_width, screen_height)) #creates screen
 pygame.mouse.set_visible(0);
 bg = pygame.image.load("./images/bubble2_large.jpg") #loads background image
-framerate = 60; #sets framerate to 60 fps
-
+framerate = 1440; #sets framerate to 60 fps
+total_collisions = 0;
+verbose_collision = 0;
+def lerp(a, b, t):
+    if(t > 1):
+        t = 1;
+    if(t < 0):
+        t = 0;
+    return a + t*(b - a);
 epsilon = 0.1; #this is the epsilon value that we will use to check for collisions.
 class GameObject: #the ultimate class for all objects to derive from
     all_gameObjects = [];
@@ -51,11 +59,20 @@ class GameObject: #the ultimate class for all objects to derive from
     def draw(self, screen = screen):
         pass;
 
-    def set_velocity(self, v):
+    def set_velocity(self, v:np.ndarray):
         self.velocity = v;
-    def set_velocity(self, x, y):
-        self.velocity[0] = x;
-        self.velocity[1] = y;
+    # def set_velocity(self, x:float, y:float):
+    #     self.velocity[0] = x;
+    #     self.velocity[1] = y;
+
+    def set_position(self, x, y):
+        self.x = x;
+        self.y = y;
+        self.pos = np.array([x, y]);
+    def set_position(self, pos):
+        self.x = pos[0];
+        self.y = pos[1];
+        self.pos = pos;
 
     def y_collision_rect(self, other):
         #here other is also a gameobject. what we need to do is consider their positions as well as their sizes.
@@ -100,6 +117,8 @@ class GameObject: #the ultimate class for all objects to derive from
         return (xcol, ycol);
         
     def collision(self, other):
+        global total_collisions;
+        verbose_collision = 0;
         #to handle the collisions what we will do IS.
         if(self.isStatic):
             return False; #no collision for static objects.
@@ -117,17 +136,27 @@ class GameObject: #the ultimate class for all objects to derive from
            pass;
         else:
             if(abs(xcol) >=  abs(ycol)):
-                print(xcol, ycol)
                 xcol = 0;
             else:
                 ycol = 0;
         if(xcol != 0):
-            print("X Collision between ",self.id, " and ", other.id);  
-            self.velocity[0] = -self.velocity[0] * self.elasticity;
+            #but we need to consider if we have already collided and reversed the velocity previously. HENCE we will check if the current velocity is on a collision course or not
+            if(self.velocity[0] * xcol > 0): #if the velocity is on a collision course then we will reverse it.
+                total_collisions += 1;
+                self.velocity[0] = -self.velocity[0] * self.elasticity;
+                if(verbose_collision):
+                    print("X Collision between ",self.id, " and ", other.id);  
+                    print("total collisions: ", total_collisions, "velocity: ", np.linalg.norm(self.velocity));
         if(ycol != 0):
-            print("Y Collision between ",self.id, " and ", other.id);  
-            self.velocity[1] = -self.velocity[1] * self.elasticity;
-    
+            if(self.velocity[1] * ycol > 0): #if the velocity is on a collision course then we will reverse it.
+                total_collisions += 1;
+                self.velocity[1] = -self.velocity[1] * self.elasticity;
+            
+                if(verbose_collision):
+                    print("Y Collision between ",self.id, " and ", other.id);  
+                    print("total collisions: ", total_collisions, "velocity: ", np.linalg.norm(self.velocity));
+
+
     def collision_all(self, others):
         if(self.isCamera):
             return False; #do nothing here as well, cause we don't collide with camera objects.
@@ -143,16 +172,22 @@ class Camera(GameObject):
         self.collision_layer = 0; #the camera is on the 0th layer, so it doesn't collide with anything at all.
         self.collision_layer_mask = 0; #the camera is on the 0th layer, so it doesn't collide with anything at all.
         self.hidden = True;
+        self.isStatic = False;
+        self.screen_focus_pos = np.array([x, y]);
+        self.set_focus_area(self.screen_focus_pos);
+        self.smoothing = 5; #the smoothing factor for the camera's movement.
     def get_screen_rect(self):
-        return pygame.Rect(self.x, self.y, self.width, self.height);
+        return pygame.Rect(self.x - self.width/2, self.y - self.height/2, self.width, self.height);
     
-    def set_position(self, x, y):
-        self.x = x;
-        self.y = y;
-    
+    #def update(self, dt):
+    #    super().update(dt);
+
+    def set_focus_area(self, target):
+        self.x = target[0] - self.width/2;
+        self.y = target[1] - self.height/2;
+        self.screen_focus_pos = target;
 #    def pad_reposition(self, rect:pygame.rect):
         #if the rect is going out of bounds then we shall move the camera as well, with some lerp attached to it.
-
 
 main_camera = Camera(0, 0, screen_width, screen_height); #the one camera that the game will use to render objects on the screen.
 main_camera.hidden = True;
@@ -177,31 +212,86 @@ class Square(GameObject):
     def rect_collision(self, other:pygame.Rect):
         return self.get_rect().colliderect(other);
 
-player_square = Square(0, 0, 100, 100, (0, 250, 210))
-player_square.velocity = np.array([100, 100]);
+player_square = Square(0, 0, 60, 60, (0, 250, 210))
+player_square.velocity = np.array([1500, 700]);
 player_square.isStatic = False; #is a dynamic object and responds to collisions.
+player_square.elasticity = 1.0;
 
 bouncers = [];
-bouncers.append(Square(500, 500, 100, 50, (240, 0, 0)));
-bouncers.append(Square(100, 700, 900, 100, (240, 0, 0)));
-prev_time = pygame.time.get_ticks();
-print(prev_time)
-while True:
-    clock.tick(framerate) #sets framerate to 60 fps
-    screen.fill(0) #fills screen with black
-    #player_square.draw(screen)
-    # bouncers[0].draw(screen);
-    curtime = pygame.time.get_ticks();
-    dt = curtime - prev_time;
-    for obj in GameObject.all_gameObjects:
-        obj.update(dt); #we run the update function for all our gameobjects. ALTHOUGH we should probably do this only for the main player.
+# bouncers.append(Square(1000, 0, 30, 1000, (240, 0, 0)));
+# bouncers.append(Square(-1000, 0,30, 1000, (240, 0, 0)));
+# bouncers.append(Square(0, 1000, 900, 30, (240, 0, 0)));
+# bouncers.append(Square(0, -1000, 900, 30, (240, 0, 0)));
+
+Xbouncer_shape = np.array([20,40])
+Ybouncer_shape = np.array([40,20])
+
+print(main_camera.screen_focus_pos)
+def main():
     prev_time = pygame.time.get_ticks();
-    pygame.display.flip(); 
+    while True:
+        clock.tick(framerate) #sets framerate to 60 fps
+        screen.fill(0) #fills screen with black
+        #player_square.draw(screen)
+        # bouncers[0].draw(screen);
+        curtime = pygame.time.get_ticks();
+        dt = curtime - prev_time;
+        main_camera.set_focus_area(lerp(main_camera.screen_focus_pos, player_square.pos, 9*dt/1000));
+        for obj in GameObject.all_gameObjects:
+            obj.update(dt); #we run the update function for all our gameobjects. ALTHOUGH we should probably do this only for the main player.
+        prev_time = pygame.time.get_ticks();
+        pygame.display.flip(); 
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                pygame.quit()
+                print("exiting pygame");
+                sys.exit()
 
-    for event in pygame.event.get():
-        if event.type == QUIT:
-            pygame.quit()
-            print("exiting pygame");
-            sys.exit()
-    
+def world_builder():
+    #gotta create the world here.
+    prev_time = pygame.time.get_ticks();
+    while True:
+        clock.tick(framerate) #sets framerate to 60 fps
+        screen.fill(0) #fills screen with black
+        #player_square.draw(screen)
+        # bouncers[0].draw(screen);
+        curtime = pygame.time.get_ticks();
+        dt = curtime - prev_time;
+        main_camera.set_focus_area(lerp(main_camera.screen_focus_pos, player_square.pos, 9*dt/1000));
+        for obj in GameObject.all_gameObjects:
+            obj.update(dt); #we run the update function for all our gameobjects. ALTHOUGH we should probably do this only for the main player.
+        prev_time = pygame.time.get_ticks();
+        pygame.display.flip(); 
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                pygame.quit()
+                print("exiting pygame");
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_x:
+                    print("X down");
+                    #on this point we generate a collision event. we also need to generate an object to store.
+                    pos = player_square.pos + player_square.velocity * dt/1000;
+                    pos[0] += (Xbouncer_shape[0]/2 + player_square.halfwidth) * np.sign(player_square.velocity[0]);
+                    #we generate an object at this position.
+                    bouncer = Square(pos[0], pos[1], Xbouncer_shape[0], Xbouncer_shape[1], (0, 0, 240));
+                    bouncers.append(bouncer);
+                if event.key == pygame.K_y:
+                    print("Y down");
+                    pos = player_square.pos + player_square.velocity * dt/1000;
+                    pos[1] += (Ybouncer_shape[1]/2 + player_square.halfheight) * np.sign(player_square.velocity[1]);
+                    #we generate an object at this position.
+                    bouncer = Square(pos[0], pos[1], Ybouncer_shape[0], Ybouncer_shape[1], (200, 0, 240));
+                    bouncers.append(bouncer);
+                if event.key == pygame.K_s:
+                    print("saving world")
+                    with open("world.pickle", "wb") as f:
+                        pickle.dump(GameObject.all_gameObjects, f);
+                    with open("bouncers.pickle", "wb") as f:
+                        pickle.dump(bouncers, f);
 
+
+
+if __name__ == "__main__":
+    # main();
+    world_builder();
