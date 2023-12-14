@@ -12,7 +12,7 @@ pygame.mouse.set_visible(0);
 bg = pygame.image.load("./images/bubble2_large.jpg") #loads background image
 framerate = 60; #sets framerate to 60 fps
 
-
+epsilon = 0.1; #this is the epsilon value that we will use to check for collisions.
 class GameObject: #the ultimate class for all objects to derive from
     all_gameObjects = [];
     def __init__(self, x, y, width, height, id = None):
@@ -60,35 +60,35 @@ class GameObject: #the ultimate class for all objects to derive from
     def y_collision_rect(self, other):
         #here other is also a gameobject. what we need to do is consider their positions as well as their sizes.
         #check for top collision.
-        if(self.x + self.halfwidth < other.x - other.halfwidth or self.x - self.halfwidth > other.x + other.halfwidth):
+        if(self.x + self.halfwidth + epsilon <= other.x - other.halfwidth or self.x - self.halfwidth - epsilon >= other.x + other.halfwidth):
             return 0; #not even in same x ranges brother. cannot collide like this.
         #otherwise it is possible for them to collide.
         #then we check which is on the top.
         if(self.y >= other.y):
             if(self.y - self.halfheight <= other.y + other.halfheight):
-                return -1; #-1 stands for bottom collision (for us).
+                return self.y - self.halfheight - other.y - other.halfheight; #-1 stands for bottom collision (for us).
             else:
                 return 0;
         else:
             if(self.y + self.halfheight >= other.y - other.halfheight):
-                return 1; #1 stands for top collision (for us). 
+                return self.y + self.halfheight - other.y + other.halfheight; #1 stands for top collision (for us). 
             else:
                 return 0;
     def x_collsion_rect(self,other):
         #here other is also a gameobject. what we need to do is consider their positions as well as their sizes.
         #check for top collision.
-        if(self.y + self.halfheight < other.y - other.halfheight or self.y - self.halfheight > other.y + other.halfheight):
+        if(self.y + self.halfheight + epsilon<= other.y - other.halfheight or self.y - self.halfheight - epsilon >= other.y + other.halfheight):
             return 0;
         #otherwise it is possible for them to collide.
         #then we check which is on the left.
         if(self.x >= other.x):
             if(self.x - self.halfwidth <= other.x + other.halfwidth):
-                return -1; #left collision.
+                return self.x - self.halfwidth - other.x - other.halfwidth; #left collision.
             else:
                 return 0;
         else:
             if(self.x + self.halfwidth >= other.x - other.halfwidth):
-                return 1; #right collilsion.
+                return self.x + self.halfwidth - other.x + other.halfwidth; #right collilsion.
             else:
                 return 0;
 
@@ -113,11 +113,19 @@ class GameObject: #the ultimate class for all objects to derive from
         if(xcol == 0 and ycol == 0):
             return False; #no collision.
         #otherwise if a collision does happen, then what we want to do is to reverse the direction of the velocity in that direction.
+        if(abs(abs(xcol) - abs(ycol)) < epsilon):
+           pass;
+        else:
+            if(abs(xcol) >=  abs(ycol)):
+                print(xcol, ycol)
+                xcol = 0;
+            else:
+                ycol = 0;
         if(xcol != 0):
-            print("Collision between ",self.id, " and ", other.id);  
+            print("X Collision between ",self.id, " and ", other.id);  
             self.velocity[0] = -self.velocity[0] * self.elasticity;
         if(ycol != 0):
-            print("Collision between ",self.id, " and ", other.id);  
+            print("Y Collision between ",self.id, " and ", other.id);  
             self.velocity[1] = -self.velocity[1] * self.elasticity;
     
     def collision_all(self, others):
@@ -172,11 +180,10 @@ class Square(GameObject):
 player_square = Square(0, 0, 100, 100, (0, 250, 210))
 player_square.velocity = np.array([100, 100]);
 player_square.isStatic = False; #is a dynamic object and responds to collisions.
-player_square.id = "Playa";
 
 bouncers = [];
-bouncers.append(Square(500, 100, 100, 900, (240, 0, 0)));
-
+bouncers.append(Square(500, 500, 100, 50, (240, 0, 0)));
+bouncers.append(Square(100, 700, 900, 100, (240, 0, 0)));
 prev_time = pygame.time.get_ticks();
 print(prev_time)
 while True:
