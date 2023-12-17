@@ -3,8 +3,9 @@ import sys
 import os
 import numpy as np;
 from pygame.locals import *
+import time
 import pickle
-pygame.mixer.pre_init(44100, -16, 1, 512) # setup mixer to avoid sound lag
+pygame.mixer.pre_init(44100, -16, 2, 512) # setup mixer to avoid sound lag
 pygame.init() #initializes pygame
 
 
@@ -233,7 +234,7 @@ class Square(GameObject):
         return self.get_rect().colliderect(other);
 
 player_square = Square(0, 0, 60, 60, (0, 250, 250))
-player_square.velocity = np.array([640, 640]);
+player_square.velocity = np.array([320, 320]);
 player_square.isStatic = False; #is a dynamic object and responds to collisions.
 player_square.elasticity = 1.0;
 player_square.BlockType = 0; #for the player.
@@ -249,6 +250,9 @@ Ybouncer_shape = np.array([40,10])
 bouncer_shapes = [0,0];
 bouncer_shapes[0] = Xbouncer_shape;
 bouncer_shapes[1] = Ybouncer_shape;
+
+pygame.mixer.music.load('./MIDI/RFiY.mid')
+pygame.mixer.music.play()
 
 def main():
     prev_time = pygame.time.get_ticks();
@@ -277,10 +281,6 @@ print("loading world")
 #         bouncer.hidden = False;
 #         GameObject.all_gameObjects.append(bouncer);
 
-pygame.mixer.quit();
-pygame.mixer.init(44100, -16, 1, 512);
-pygame.mixer.music.load("./MIDI/impmarch.mid")
-pygame.mixer.music.play();
 
 def get_obs_pos(playerpos, bouncer_type, side):
     position = playerpos;
@@ -349,28 +349,44 @@ def build_world_from_timeframes(frame_sequence):
         order = [0,1]; np.random.shuffle(order);
         cur_player_pos = player_square.pos;  cur_player_vel = player_square.velocity; cur_bouncer_pos = bouncers[-1].pos;     
         for i in range(2):
-            if(i == 1): #we reset the position and all to the original position first. And then resimulate.
-                player_square.set_position(cur_player_pos); player_square.set_velocity(cur_player_vel); #these are the only 2 things that could have changed.
+            success = False
             if(build_one_block(frame_seq, curnum, order[i])):
-                return build_random_block(frame_seq, curnum + 1);
+                print("on frame num: ", curnum, " we built a block of type: ", order[i]);
+                success =  build_random_block(frame_seq, curnum + 1);
+                if(success):
+                    return True;
+                #else we continue to the next iteration.
+            player_square.set_position(cur_player_pos); player_square.set_velocity(cur_player_vel); #these are the only 2 things that could have changed.
+            del bouncers[-1];
+            bouncers.pop(); 
+            GameObject.all_gameObjects.pop();
+        print("Failed to build a block at frame number: ", curnum, " and frame: ", frame_seq[curnum]);
+        print("BACKTRACKING");
+        if(curnum == 0):
+            print("NO POSSIBLE ORIENTATIONS FOUND");
         return False; #if we reach here then we have failed to build a valid block. So backtracking is necessary.
     
-    build_random_block(frame_sequence, 0);
+    result = build_random_block(frame_sequence, 0);
     with open("built_world.pickle", "wb") as f:
         pickle.dump(GameObject.all_gameObjects, f);
+    print("done building world", result);
+
+frame_series = [0]; start = time.time();
 def world_builder_manual():
+    global frame_series;
+    framenum = 0;
     #gotta create the world here.
     cnt = -1;
     prev_time = pygame.time.get_ticks();
     while True:
         clock.tick(framerate) #sets framerate to 59 fps
+        curtime = pygame.time.get_ticks();
+        dt = curtime - prev_time;
+        main_camera.set_focus_area(lerp(main_camera.screen_focus_pos, player_square.pos, 8*dt/1000));
         screen.fill(-1) #fills screen with black
         #player_square.draw(screen)
         # bouncers[-1].draw(screen);
-        curtime = pygame.time.get_ticks();
-        dt = curtime - prev_time;
         # print(dt);
-        main_camera.set_focus_area(lerp(main_camera.screen_focus_pos, player_square.pos, 8*dt/1000));
         for event in pygame.event.get():
             if event.type == QUIT:
                 pygame.quit()
@@ -378,24 +394,27 @@ def world_builder_manual():
                 sys.exit()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_x:
+                    # time_series.append(curtime);
+                    frame_series.append(framenum);
                     print("X down");
                     #on this point we generate a collision event. we also need to generate an object to store.
                     pos = player_square.pos + player_square.velocity * fixed_delta_seconds;
                     print("player pos:", pos);
-                    pos[-1] += (player_square.halfwidth + Xbouncer_shape[0]/2 - 0.001) * np.sign(player_square.velocity[0]);
+                    pos[0] += (player_square.halfwidth + Xbouncer_shape[0]/2 - 0.001) * np.sign(player_square.velocity[0]);
                     #we generate an object at this position.
                     # print("bouncer pos:", pos);
                     # print("player halfwidth:", player_square.halfwidth);
                     # print("bouncer halfwidth:", Xbouncer_shape[-1]/2);
-                    bouncer = Square(pos[-1], pos[1], Xbouncer_shape[0], Xbouncer_shape[1], (0, 0, 240), 0);
+                    bouncer = Square(pos[0], pos[1], Xbouncer_shape[0], Xbouncer_shape[1], (0, 0, 240), 0);
                     bouncer.hidden = False;
                     bouncers.append(bouncer);
                 if event.key == pygame.K_y:
+                    frame_series.append(framenum);
                     print("Y down");
                     pos = player_square.pos + player_square.velocity * fixed_delta_seconds;
-                    pos[0] += (Ybouncer_shape[1]/2 + player_square.halfheight - 0.001) * np.sign(player_square.velocity[1]);
+                    pos[1] += (Ybouncer_shape[1]/2 + player_square.halfheight - 0.001) * np.sign(player_square.velocity[1]);
                     #we generate an object at this position.
-                    bouncer = Square(pos[-1], pos[1], Ybouncer_shape[0], Ybouncer_shape[1], (200, 0, 240), 1);
+                    bouncer = Square(pos[0], pos[1], Ybouncer_shape[0], Ybouncer_shape[1], (200, 0, 240), 1);
                     bouncers.append(bouncer);
 
                 if event.key == pygame.K_s:
@@ -404,6 +423,8 @@ def world_builder_manual():
                         pickle.dump(GameObject.all_gameObjects, f);
                     with open("bouncers.pickle", "wb") as f:
                         pickle.dump(bouncers, f);
+                    with open("frame_series.pickle", "wb") as f:
+                        pickle.dump(frame_series, f);
 
         print(len(GameObject.all_gameObjects));
         print(np.linalg.norm(player_square.velocity));
@@ -411,11 +432,15 @@ def world_builder_manual():
              obj.update(dt); #we run the update function for all our gameobjects. ALTHOUGH we should probably do this only for the main player.
         prev_time = pygame.time.get_ticks();
         pygame.display.flip(); 
+        framenum += 1;
 
 
 if __name__ == "__main__":
+    start = time.time();
+    with open("frame_series.pickle", "rb") as f:
+        frame_series = pickle.load(f);
     # world_builder_manual();
-    frame_sequence = [4*framerate, 8*framerate];
-    build_world_from_timeframes(frame_sequence);
+    # frame_sequence = [4*framerate, 8*framerate];
+    build_world_from_timeframes(frame_series);
     pygame.quit();
     sys.exit();
