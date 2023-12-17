@@ -1,3 +1,5 @@
 import mido
 mid = mido.MidiFile('./MIDI/impmarch.mid', clip = True)
-print(len(mid.tracks[0]))
+
+for i in mid.tracks[1][:20]:
+    print(i)
