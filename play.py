@@ -244,6 +244,20 @@ bouncers = [];
 # bouncers.append(Square(-1000, 0,30, 1000, (240, 0, 0)));
 # bouncers.append(Square(0, 1000, 900, 30, (240, 0, 0)));
 # bouncers.append(Square(0, -1000, 900, 30, (240, 0, 0)));
+def add_bouncer(bnc):
+    global bouncers;
+    print("bouncer num ", len(bouncers), "added");
+    bouncers.append(bnc);
+    bouncers[-1].hidden = False;
+    # GameObject.all_gameObjects.append(bouncers[-1]); #no need to add this since it gets added automatically.
+
+def del_bouncer():
+    global bouncers;
+    print("DELETED bouncer num ", len(bouncers));
+    # del bouncers[-1];
+    GameObject.all_gameObjects.pop()
+    bouncers.pop(); 
+
 
 Xbouncer_shape = np.array([40,40])
 Ybouncer_shape = np.array([40,10])
@@ -253,6 +267,15 @@ bouncer_shapes[1] = Ybouncer_shape;
 
 pygame.mixer.music.load('./MIDI/RFiY.mid')
 pygame.mixer.music.play()
+
+
+print("loading world")
+#with open("bouncers.pickle", "rb") as f:
+#with open("built_world.pickle", "rb") as f:
+#    bouncers = pickle.load(f);
+#    for bouncer in bouncers:
+#        bouncer.hidden = False;
+#        GameObject.all_gameObjects.append(bouncer);
 
 def main():
     prev_time = pygame.time.get_ticks();
@@ -274,13 +297,6 @@ def main():
                 print("exiting pygame");
                 sys.exit()
 
-print("loading world")
-# with open("bouncers.pickle", "rb") as f:
-#     bouncers = pickle.load(f);
-#     for bouncer in bouncers:
-#         bouncer.hidden = False;
-#         GameObject.all_gameObjects.append(bouncer);
-
 
 def get_obs_pos(playerpos, bouncer_type, side):
     position = playerpos;
@@ -297,9 +313,10 @@ def build_world_from_timeframes(frame_sequence):
         frame_sequence.insert(0,0); #we insert a 0 at the start of the frame sequence.
     og_obstacle_type = 0;
     og_obstacle_pos = get_obs_pos(playerpos[0], og_obstacle_type, -1); #an Xbouncer at the start of the frame sequence.
-    bouncers.append(Square(og_obstacle_pos[0], og_obstacle_pos[1], Xbouncer_shape[0], Xbouncer_shape[1],(140,140,140), og_obstacle_type)); #we add a big square at the start of the frame sequence.
-    
+    first_one = Square(og_obstacle_pos[0], og_obstacle_pos[1], Xbouncer_shape[0], Xbouncer_shape[1],(140,140,140), og_obstacle_type); #we add a big square at the start of the frame sequence.
+    add_bouncer(first_one); #adding the first bouncer.
     def build_one_block(frame_seq, curnum, first_type = 0):
+        global bouncers;
         if(curnum >= len(frame_seq) - 1):
             return True;
         curframe = frame_seq[curnum]; #0 will always be a frame that we start at, and its not a collision frame.
@@ -308,7 +325,7 @@ def build_world_from_timeframes(frame_sequence):
         cur_player_pos = player_square.pos;  cur_player_vel = player_square.velocity; cur_bouncer_pos = bouncers[-1].pos;     
         future_player_pos = cur_player_pos + cur_player_vel * (frame_seq[curnum + 1] - curframe) * fixed_delta_seconds; #this is the position of the player in the future. We need to keep the bouncer over here.
         future_bouncer_pos = get_obs_pos(future_player_pos, first_type, np.sign(cur_player_vel[first_type])); #this is the position of the bouncer in the future.
-        bouncers.append(Square(future_bouncer_pos[0], future_bouncer_pos[1], bouncer_shapes[first_type][0], bouncer_shapes[first_type][1],(25,160,25), first_type)); #we add a big square at the start of the frame sequence.
+        add_bouncer(Square(future_bouncer_pos[0], future_bouncer_pos[1], bouncer_shapes[first_type][0], bouncer_shapes[first_type][1],(25,160,25), first_type)); #we add a big square at the start of the frame sequence.
         #Now we check if there is any other obstacle in between it or not.
         correct_collision = False;
         player_velocity = player_square.velocity;
@@ -333,16 +350,17 @@ def build_world_from_timeframes(frame_sequence):
                     print("Need for backtracking.");
                     break;
             pygame.display.flip();
-        if(not correct_collision):
-            del bouncers[-1]; #removing the bouncer that we had added.
-            bouncers.pop();
-            GameObject.all_gameObjects.pop();
-        if(correct_collision):
-            player_square.set_position(player_pos);
-            player_square.set_velocity(player_velocity);
+        # if(not correct_collision):
+        #     del bouncers[-1]; #removing the bouncer that we had added.
+        #     bouncers.pop();
+        #     GameObject.all_gameObjects.pop();
+        # if(correct_collision):
+        player_square.set_position(player_pos);
+        player_square.set_velocity(player_velocity);
         return correct_collision;
 
     def build_random_block(frame_seq, curnum):
+        global bouncers;
         if(curnum >= len(frame_seq) - 1):
             return True;
         curframe = frame_seq[curnum]; #0 will always be a frame that we start at, and its not a collision frame.
@@ -350,16 +368,14 @@ def build_world_from_timeframes(frame_sequence):
         cur_player_pos = player_square.pos;  cur_player_vel = player_square.velocity; cur_bouncer_pos = bouncers[-1].pos;     
         for i in range(2):
             success = False
-            if(build_one_block(frame_seq, curnum, order[i])):
+            if(build_one_block(frame_seq, curnum, order[i])): #is
                 print("on frame num: ", curnum, " we built a block of type: ", order[i]);
                 success =  build_random_block(frame_seq, curnum + 1);
                 if(success):
                     return True;
                 #else we continue to the next iteration.
             player_square.set_position(cur_player_pos); player_square.set_velocity(cur_player_vel); #these are the only 2 things that could have changed.
-            del bouncers[-1];
-            bouncers.pop(); 
-            GameObject.all_gameObjects.pop();
+            del_bouncer();
         print("Failed to build a block at frame number: ", curnum, " and frame: ", frame_seq[curnum]);
         print("BACKTRACKING");
         if(curnum == 0):
@@ -370,6 +386,7 @@ def build_world_from_timeframes(frame_sequence):
     with open("built_world.pickle", "wb") as f:
         pickle.dump(GameObject.all_gameObjects, f);
     print("done building world", result);
+
 
 frame_series = [0]; start = time.time();
 def world_builder_manual():
@@ -439,8 +456,13 @@ if __name__ == "__main__":
     start = time.time();
     with open("frame_series.pickle", "rb") as f:
         frame_series = pickle.load(f);
+    # main();
     # world_builder_manual();
     # frame_sequence = [4*framerate, 8*framerate];
-    build_world_from_timeframes(frame_series);
+    try:
+        build_world_from_timeframes(frame_series);
+    except Exception as e:
+        print(e);
+        print(len(bouncers));
     pygame.quit();
     sys.exit();
